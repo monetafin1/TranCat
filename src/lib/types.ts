@@ -6,7 +6,7 @@ export type Tenant = {
 export type Category = {
   id: number;
   name: string;
-  type: "income" | "expense";
+  type: "income" | "expense" | "transfer";
 };
 
 export type TransactionStatus = "pending_review" | "categorized";
