@@ -45,3 +45,54 @@ export async function createTenant(name: string) {
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard");
 }
+
+export async function bulkUpdateCategory(
+  transactionIds: number[],
+  categoryId: number | null
+) {
+  if (transactionIds.length === 0) return;
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+
+  const { error } = await supabase
+    .from("transactions")
+    .update({
+      category_id: categoryId,
+      status: categoryId ? "categorized" : "pending_review",
+      updated_by: userData.user?.id ?? null,
+    })
+    .in("id", transactionIds);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard");
+}
+
+export async function bulkSetStatus(
+  transactionIds: number[],
+  status: "pending_review" | "categorized"
+) {
+  if (transactionIds.length === 0) return;
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+
+  const { error } = await supabase
+    .from("transactions")
+    .update({ status, updated_by: userData.user?.id ?? null })
+    .in("id", transactionIds);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard");
+}
+
+export async function createCategory(
+  groupName: string,
+  name: string,
+  type: "income" | "expense"
+) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("categories")
+    .insert({ group_name: groupName, name, type });
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard");
+}
