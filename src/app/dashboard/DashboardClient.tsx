@@ -11,6 +11,7 @@ import {
   createCategory,
 } from "./actions";
 import type { Category, Tenant, Transaction } from "@/lib/types";
+import PnLView from "./PnLView";
 
 type Props = {
   tenants: Tenant[];
@@ -59,12 +60,13 @@ export default function DashboardClient({ tenants, categories }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkCategoryValue, setBulkCategoryValue] = useState("");
 
-  const [newCategoryGroup, setNewCategoryGroup] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryType, setNewCategoryType] = useState<"income" | "expense">(
     "expense"
   );
   const [addingCategory, setAddingCategory] = useState(false);
+
+  const [view, setView] = useState<"transactions" | "pnl">("transactions");
 
   useEffect(() => {
     if (!selectedTenantId) {
@@ -94,6 +96,20 @@ export default function DashboardClient({ tenants, categories }: Props) {
     categoryList.forEach((c) => map.set(c.id, c));
     return map;
   }, [categoryList]);
+
+  const selectedTenantName = useMemo(
+    () => tenantList.find((t) => t.id === selectedTenantId)?.name ?? "",
+    [tenantList, selectedTenantId]
+  );
+
+  const incomeCategories = useMemo(
+    () => categoryList.filter((c) => c.type === "income"),
+    [categoryList]
+  );
+  const expenseCategories = useMemo(
+    () => categoryList.filter((c) => c.type === "expense"),
+    [categoryList]
+  );
 
   const filtered = useMemo(() => {
     return transactions.filter((t) => {
@@ -234,19 +250,17 @@ export default function DashboardClient({ tenants, categories }: Props) {
   }
 
   async function handleAddCategory() {
-    const group = newCategoryGroup.trim();
     const name = newCategoryName.trim();
-    if (!group || !name) return;
+    if (!name) return;
     setAddingCategory(true);
     try {
-      await createCategory(group, name, newCategoryType);
+      await createCategory(name, newCategoryType);
       const { data } = await supabase
         .from("categories")
-        .select("id, group_name, name, type")
-        .order("group_name")
+        .select("id, name, type")
+        .order("type")
         .order("name");
       setCategoryList((data ?? []) as Category[]);
-      setNewCategoryGroup("");
       setNewCategoryName("");
       setNewCategoryType("expense");
     } finally {
@@ -300,18 +314,7 @@ export default function DashboardClient({ tenants, categories }: Props) {
         <div className="flex items-end gap-2 rounded-md border border-zinc-200 bg-white p-2">
           <div>
             <label className="block text-xs font-medium text-zinc-500">
-              Add category — Group
-            </label>
-            <input
-              value={newCategoryGroup}
-              onChange={(e) => setNewCategoryGroup(e.target.value)}
-              placeholder="e.g. Operating Expense"
-              className="mt-1 w-44 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-zinc-500">
-              Name
+              Add category — Name
             </label>
             <input
               value={newCategoryName}
@@ -349,7 +352,38 @@ export default function DashboardClient({ tenants, categories }: Props) {
         </div>
       </div>
 
-      {selectedIds.size > 0 && (
+      <div className="flex gap-1 border-b border-zinc-200">
+        <button
+          onClick={() => setView("transactions")}
+          className={`px-3 py-2 text-sm font-medium ${
+            view === "transactions"
+              ? "border-b-2 border-zinc-900 text-zinc-900"
+              : "text-zinc-500 hover:text-zinc-700"
+          }`}
+        >
+          Transactions
+        </button>
+        <button
+          onClick={() => setView("pnl")}
+          className={`px-3 py-2 text-sm font-medium ${
+            view === "pnl"
+              ? "border-b-2 border-zinc-900 text-zinc-900"
+              : "text-zinc-500 hover:text-zinc-700"
+          }`}
+        >
+          P&amp;L
+        </button>
+      </div>
+
+      {view === "pnl" && (
+        <PnLView
+          transactions={transactions}
+          categories={categoryList}
+          tenantName={selectedTenantName}
+        />
+      )}
+
+      {view === "transactions" && selectedIds.size > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border border-zinc-300 bg-zinc-100 px-3 py-2">
           <span className="text-sm font-medium text-zinc-700">
             {selectedIds.size} selected
@@ -362,11 +396,20 @@ export default function DashboardClient({ tenants, categories }: Props) {
               className="rounded border border-zinc-300 px-2 py-1 text-xs"
             >
               <option value="">Uncategorized</option>
-              {categoryList.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.group_name} — {c.name}
-                </option>
-              ))}
+              <optgroup label="Income">
+                {incomeCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Expense">
+                {expenseCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </optgroup>
             </select>
             <button
               onClick={handleBulkApplyCategory}
@@ -400,6 +443,7 @@ export default function DashboardClient({ tenants, categories }: Props) {
         </div>
       )}
 
+      {view === "transactions" && (
       <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
         <table className="w-full min-w-[1250px] text-sm">
           <thead className="bg-zinc-50 text-left text-xs uppercase text-zinc-500">
@@ -536,11 +580,20 @@ export default function DashboardClient({ tenants, categories }: Props) {
                 >
                   <option value="all">All</option>
                   <option value="uncategorized">Uncategorized</option>
-                  {categoryList.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
+                  <optgroup label="Income">
+                    {incomeCategories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Expense">
+                    {expenseCategories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
               </th>
               <th className="px-3 py-1.5">
@@ -621,15 +674,28 @@ export default function DashboardClient({ tenants, categories }: Props) {
                       className="w-full min-w-[180px] rounded border border-zinc-200 px-2 py-1 text-xs"
                     >
                       <option value="">Uncategorized</option>
-                      {categoryList.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.group_name} — {c.name}
-                        </option>
-                      ))}
+                      <optgroup label="Income">
+                        {incomeCategories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Expense">
+                        {expenseCategories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </optgroup>
                     </select>
                     {cat && (
-                      <span className="mt-0.5 block text-[10px] text-zinc-400">
-                        {cat.group_name}
+                      <span
+                        className={`mt-0.5 block text-[10px] ${
+                          cat.type === "income" ? "text-emerald-500" : "text-zinc-400"
+                        }`}
+                      >
+                        {cat.type === "income" ? "Income" : "Expense"}
                       </span>
                     )}
                   </td>
@@ -651,6 +717,7 @@ export default function DashboardClient({ tenants, categories }: Props) {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }
