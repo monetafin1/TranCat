@@ -1,0 +1,31 @@
+export type Tenant = {
+  id: number;
+  name: string;
+};
+
+export type Category = {
+  id: number;
+  group_name: string;
+  name: string;
+  type: "income" | "expense";
+};
+
+export type TransactionStatus = "pending_review" | "categorized";
+export type TransactionType = "debit" | "credit";
+
+export type Transaction = {
+  id: number;
+  tenant_id: number;
+  date: string;
+  amount: number;
+  type: TransactionType;
+  description: string;
+  category_id: number | null;
+  status: TransactionStatus;
+  source_file: string | null;
+  bank: string | null;
+  currency: string;
+  tags: string | null;
+  created_at: string;
+  updated_at: string;
+};
