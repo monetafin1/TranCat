@@ -12,6 +12,7 @@ export type Category = {
 
 export type TransactionStatus = "pending_review" | "categorized";
 export type TransactionType = "debit" | "credit";
+export type AccountType = "bank" | "credit_card";
 
 export type Transaction = {
   id: number;
@@ -24,6 +25,7 @@ export type Transaction = {
   status: TransactionStatus;
   source_file: string | null;
   bank: string | null;
+  account_type: AccountType | null;
   currency: string;
   tags: string | null;
   created_at: string;
