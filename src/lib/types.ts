@@ -5,7 +5,6 @@ export type Tenant = {
 
 export type Category = {
   id: number;
-  group_name: string;
   name: string;
   type: "income" | "expense";
 };
