@@ -61,9 +61,9 @@ export default function DashboardClient({ tenants, categories }: Props) {
   const [bulkCategoryValue, setBulkCategoryValue] = useState("");
 
   const [newCategoryName, setNewCategoryName] = useState("");
-  const [newCategoryType, setNewCategoryType] = useState<"income" | "expense">(
-    "expense"
-  );
+  const [newCategoryType, setNewCategoryType] = useState<
+    "income" | "expense" | "transfer"
+  >("expense");
   const [addingCategory, setAddingCategory] = useState(false);
 
   const [view, setView] = useState<"transactions" | "pnl">("transactions");
@@ -108,6 +108,10 @@ export default function DashboardClient({ tenants, categories }: Props) {
   );
   const expenseCategories = useMemo(
     () => categoryList.filter((c) => c.type === "expense"),
+    [categoryList]
+  );
+  const transferCategories = useMemo(
+    () => categoryList.filter((c) => c.type === "transfer"),
     [categoryList]
   );
 
@@ -180,16 +184,28 @@ export default function DashboardClient({ tenants, categories }: Props) {
 
   function handleCategoryChange(txId: number, value: string) {
     const categoryId = value === "" ? null : Number(value);
+    const changedTx = transactions.find((t) => t.id === txId);
     setTransactions((prev) =>
-      prev.map((t) =>
-        t.id === txId
-          ? {
-              ...t,
-              category_id: categoryId,
-              status: categoryId ? "categorized" : "pending_review",
-            }
-          : t
-      )
+      prev.map((t) => {
+        if (t.id === txId) {
+          return {
+            ...t,
+            category_id: categoryId,
+            status: categoryId ? "categorized" : "pending_review",
+          };
+        }
+        // Auto-learn: mirror the same category onto other currently
+        // uncategorized transactions with an identical description.
+        if (
+          categoryId &&
+          changedTx &&
+          t.category_id === null &&
+          t.description === changedTx.description
+        ) {
+          return { ...t, category_id: categoryId, status: "categorized" };
+        }
+        return t;
+      })
     );
     startTransition(() => {
       updateTransactionCategory(txId, categoryId);
@@ -330,12 +346,15 @@ export default function DashboardClient({ tenants, categories }: Props) {
             <select
               value={newCategoryType}
               onChange={(e) =>
-                setNewCategoryType(e.target.value as "income" | "expense")
+                setNewCategoryType(
+                  e.target.value as "income" | "expense" | "transfer"
+                )
               }
               className="mt-1 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
             >
               <option value="expense">Expense</option>
               <option value="income">Income</option>
+              <option value="transfer">Other (Non-P&amp;L)</option>
             </select>
           </div>
           <button
@@ -405,6 +424,13 @@ export default function DashboardClient({ tenants, categories }: Props) {
               </optgroup>
               <optgroup label="Expense">
                 {expenseCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Other (Non-P&amp;L)">
+                {transferCategories.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
@@ -594,6 +620,13 @@ export default function DashboardClient({ tenants, categories }: Props) {
                       </option>
                     ))}
                   </optgroup>
+                  <optgroup label="Other (Non-P&amp;L)">
+                    {transferCategories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
               </th>
               <th className="px-3 py-1.5">
@@ -688,14 +721,29 @@ export default function DashboardClient({ tenants, categories }: Props) {
                           </option>
                         ))}
                       </optgroup>
+                      <optgroup label="Other (Non-P&amp;L)">
+                        {transferCategories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </optgroup>
                     </select>
                     {cat && (
                       <span
                         className={`mt-0.5 block text-[10px] ${
-                          cat.type === "income" ? "text-emerald-500" : "text-zinc-400"
+                          cat.type === "income"
+                            ? "text-emerald-500"
+                            : cat.type === "transfer"
+                              ? "text-sky-500"
+                              : "text-zinc-400"
                         }`}
                       >
-                        {cat.type === "income" ? "Income" : "Expense"}
+                        {cat.type === "income"
+                          ? "Income"
+                          : cat.type === "transfer"
+                            ? "Non-P&amp;L"
+                            : "Expense"}
                       </span>
                     )}
                   </td>

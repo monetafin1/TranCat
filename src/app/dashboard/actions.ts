@@ -10,6 +10,15 @@ export async function updateTransactionCategory(
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
 
+  // Look up tenant + description first so we can auto-learn: apply the same
+  // category to any other uncategorized transactions with an identical
+  // description for this tenant.
+  const { data: txRow } = await supabase
+    .from("transactions")
+    .select("tenant_id, description")
+    .eq("id", transactionId)
+    .single();
+
   const { error } = await supabase
     .from("transactions")
     .update({
@@ -20,6 +29,21 @@ export async function updateTransactionCategory(
     .eq("id", transactionId);
 
   if (error) throw new Error(error.message);
+
+  if (categoryId && txRow) {
+    await supabase
+      .from("transactions")
+      .update({
+        category_id: categoryId,
+        status: "categorized",
+        updated_by: userData.user?.id ?? null,
+      })
+      .eq("tenant_id", txRow.tenant_id)
+      .eq("description", txRow.description)
+      .is("category_id", null)
+      .neq("id", transactionId);
+  }
+
   revalidatePath("/dashboard");
 }
 
@@ -86,7 +110,7 @@ export async function bulkSetStatus(
 
 export async function createCategory(
   name: string,
-  type: "income" | "expense"
+  type: "income" | "expense" | "transfer"
 ) {
   const supabase = await createClient();
   const { error } = await supabase

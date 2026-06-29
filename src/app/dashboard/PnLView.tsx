@@ -30,8 +30,10 @@ export default function PnLView({ transactions, categories, tenantName }: Props)
   const {
     incomeLines,
     expenseLines,
+    transferLines,
     totalIncome,
     totalExpense,
+    totalTransfer,
     uncategorizedCredit,
     uncategorizedDebit,
     uncategorizedCreditCount,
@@ -39,6 +41,7 @@ export default function PnLView({ transactions, categories, tenantName }: Props)
   } = useMemo(() => {
     const incomeMap = new Map<number, { name: string; amount: number }>();
     const expenseMap = new Map<number, { name: string; amount: number }>();
+    const transferMap = new Map<number, { name: string; amount: number }>();
     let uncategorizedCredit = 0;
     let uncategorizedDebit = 0;
     let uncategorizedCreditCount = 0;
@@ -58,7 +61,12 @@ export default function PnLView({ transactions, categories, tenantName }: Props)
       }
       const cat = categoryById.get(t.category_id);
       if (!cat) continue;
-      const targetMap = cat.type === "income" ? incomeMap : expenseMap;
+      const targetMap =
+        cat.type === "income"
+          ? incomeMap
+          : cat.type === "transfer"
+            ? transferMap
+            : expenseMap;
       const existing = targetMap.get(cat.id);
       if (existing) {
         existing.amount += amount;
@@ -73,14 +81,20 @@ export default function PnLView({ transactions, categories, tenantName }: Props)
     const expenseLines = Array.from(expenseMap.values()).sort(
       (a, b) => b.amount - a.amount
     );
+    const transferLines = Array.from(transferMap.values()).sort(
+      (a, b) => b.amount - a.amount
+    );
     const totalIncome = incomeLines.reduce((s, l) => s + l.amount, 0);
     const totalExpense = expenseLines.reduce((s, l) => s + l.amount, 0);
+    const totalTransfer = transferLines.reduce((s, l) => s + l.amount, 0);
 
     return {
       incomeLines,
       expenseLines,
+      transferLines,
       totalIncome,
       totalExpense,
+      totalTransfer,
       uncategorizedCredit,
       uncategorizedDebit,
       uncategorizedCreditCount,
@@ -113,6 +127,10 @@ export default function PnLView({ transactions, categories, tenantName }: Props)
     rows.push(["Total Expense", totalExpense]);
     rows.push([]);
     rows.push(["Net Income", netIncome]);
+    rows.push([]);
+    rows.push(["Other (Non-P&L) — transfers, investments, etc."]);
+    transferLines.forEach((l) => rows.push([l.name, l.amount]));
+    rows.push(["Total Other (Non-P&L)", totalTransfer]);
     rows.push([]);
     rows.push(["Uncategorized (not included in Net Income)"]);
     rows.push([`Credits (${uncategorizedCreditCount} txns)`, uncategorizedCredit]);
@@ -226,6 +244,31 @@ export default function PnLView({ transactions, categories, tenantName }: Props)
             {currency} {formatAmount(netIncome)}
           </span>
         </div>
+
+        {transferLines.length > 0 && (
+          <div className="mb-4 rounded-md border border-sky-200 bg-sky-50 p-3">
+            <p className="mb-1 text-sm font-semibold text-sky-800">
+              Other (Non-P&amp;L) — transfers, investments, etc.
+            </p>
+            {transferLines.map((l) => (
+              <div
+                key={l.name}
+                className="flex justify-between border-b border-sky-100 py-1 text-sm text-sky-700"
+              >
+                <span>{l.name}</span>
+                <span>
+                  {currency} {formatAmount(l.amount)}
+                </span>
+              </div>
+            ))}
+            <div className="mt-1 flex justify-between text-sm font-semibold text-sky-800">
+              <span>Total Other (Non-P&amp;L)</span>
+              <span>
+                {currency} {formatAmount(totalTransfer)}
+              </span>
+            </div>
+          </div>
+        )}
 
         {(uncategorizedCreditCount > 0 || uncategorizedDebitCount > 0) && (
           <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">
