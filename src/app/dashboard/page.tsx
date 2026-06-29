@@ -11,8 +11,8 @@ export default async function DashboardPage() {
       supabase.from("tenants").select("id, name").order("name"),
       supabase
         .from("categories")
-        .select("id, group_name, name, type")
-        .order("group_name")
+        .select("id, name, type")
+        .order("type")
         .order("name"),
       supabase.auth.getUser(),
     ]);
