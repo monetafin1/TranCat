@@ -85,14 +85,13 @@ export async function bulkSetStatus(
 }
 
 export async function createCategory(
-  groupName: string,
   name: string,
   type: "income" | "expense"
 ) {
   const supabase = await createClient();
   const { error } = await supabase
     .from("categories")
-    .insert({ group_name: groupName, name, type });
+    .insert({ name, type });
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard");
 }
