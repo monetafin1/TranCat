@@ -1,15 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Category, Transaction } from "@/lib/types";
+import type { AssetDepreciation, Category, Transaction } from "@/lib/types";
 
 type Props = {
   transactions: Transaction[];
   categories: Category[];
   tenantName: string;
+  depreciation: AssetDepreciation[];
 };
 
-export default function PnLView({ transactions, categories, tenantName }: Props) {
+export default function PnLView({ transactions, categories, tenantName, depreciation }: Props) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
@@ -102,7 +103,28 @@ export default function PnLView({ transactions, categories, tenantName }: Props)
     };
   }, [filtered, categoryById]);
 
-  const netIncome = totalIncome - totalExpense;
+  // Sum depreciation entries whose year falls within the selected date range
+  const { depreciationLines, totalDepreciation } = useMemo(() => {
+    const yearFrom = dateFrom ? new Date(dateFrom).getFullYear() : null;
+    const yearTo = dateTo ? new Date(dateTo).getFullYear() : null;
+    const inRange = depreciation.filter((d) => {
+      if (yearFrom !== null && d.year < yearFrom) return false;
+      if (yearTo !== null && d.year > yearTo) return false;
+      return true;
+    });
+    // Group by year for display
+    const byYear = new Map<number, number>();
+    for (const d of inRange) {
+      byYear.set(d.year, (byYear.get(d.year) ?? 0) + d.amount);
+    }
+    const depreciationLines = Array.from(byYear.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([year, amount]) => ({ year, amount }));
+    const totalDepreciation = depreciationLines.reduce((s, l) => s + l.amount, 0);
+    return { depreciationLines, totalDepreciation };
+  }, [depreciation, dateFrom, dateTo]);
+
+  const netIncome = totalIncome - totalExpense - totalDepreciation;
   const currency = filtered[0]?.currency ?? "INR";
 
   function formatAmount(n: number) {
@@ -124,9 +146,10 @@ export default function PnLView({ transactions, categories, tenantName }: Props)
     rows.push([]);
     rows.push(["Expense"]);
     expenseLines.forEach((l) => rows.push([l.name, l.amount]));
-    rows.push(["Total Expense", totalExpense]);
+    depreciationLines.forEach((l) => rows.push([`Depreciation (${l.year})`, l.amount]));
+    rows.push(["Total Expense", totalExpense + totalDepreciation]);
     rows.push([]);
-    rows.push(["Net Income", netIncome]);
+    rows.push(["Net Income (after depreciation)", netIncome]);
     rows.push([]);
     rows.push(["Other (Non-P&L) — transfers, investments, etc."]);
     transferLines.forEach((l) => rows.push([l.name, l.amount]));
@@ -224,10 +247,21 @@ export default function PnLView({ transactions, categories, tenantName }: Props)
               </span>
             </div>
           ))}
+          {depreciationLines.map((l) => (
+            <div
+              key={`dep-${l.year}`}
+              className="flex justify-between border-b border-zinc-100 py-1 text-sm"
+            >
+              <span className="text-zinc-700">Depreciation ({l.year})</span>
+              <span className="text-zinc-900">
+                {currency} {formatAmount(l.amount)}
+              </span>
+            </div>
+          ))}
           <div className="mt-1 flex justify-between border-t border-zinc-300 py-1 text-sm font-semibold">
             <span>Total Expense</span>
             <span>
-              {currency} {formatAmount(totalExpense)}
+              {currency} {formatAmount(totalExpense + totalDepreciation)}
             </span>
           </div>
         </div>

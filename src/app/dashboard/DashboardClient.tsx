@@ -9,10 +9,13 @@ import {
   bulkUpdateCategory,
   bulkSetStatus,
   createCategory,
+  linkTransactionToAsset,
 } from "./actions";
-import type { Category, ProcessedFile, Tenant, Transaction } from "@/lib/types";
+import type { Asset, AssetDepreciation, Category, ProcessedFile, Tenant, Transaction } from "@/lib/types";
+import { CAT_ASSET_PURCHASE, CAT_ASSET_SALE } from "@/lib/types";
 import PnLView from "./PnLView";
 import ProcessedFilesView from "./ProcessedFilesView";
+import AssetsView from "./AssetsView";
 
 type Props = {
   tenants: Tenant[];
@@ -69,7 +72,10 @@ export default function DashboardClient({ tenants, categories }: Props) {
   >("expense");
   const [addingCategory, setAddingCategory] = useState(false);
 
-  const [view, setView] = useState<"transactions" | "pnl" | "files">(
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [assetsDepreciation, setAssetsDepreciation] = useState<AssetDepreciation[]>([]);
+
+  const [view, setView] = useState<"transactions" | "pnl" | "files" | "assets">(
     "transactions"
   );
 
@@ -106,6 +112,33 @@ export default function DashboardClient({ tenants, categories }: Props) {
         if (!error) setProcessedFiles((data ?? []) as ProcessedFile[]);
         setFilesLoading(false);
       });
+  }, [selectedTenantId, supabase]);
+
+  const fetchAssets = () => {
+    if (!selectedTenantId) {
+      setAssets([]);
+      setAssetsDepreciation([]);
+      return;
+    }
+    supabase
+      .from("assets")
+      .select("*")
+      .eq("tenant_id", selectedTenantId)
+      .order("purchase_date", { ascending: false })
+      .then(({ data }) => setAssets((data ?? []) as Asset[]));
+    // Fetch depreciation scoped to this tenant's assets via a nested select
+    supabase
+      .from("asset_depreciation")
+      .select("*, assets!inner(tenant_id)")
+      .eq("assets.tenant_id", selectedTenantId)
+      .then(({ data }) =>
+        setAssetsDepreciation((data ?? []) as AssetDepreciation[])
+      );
+  };
+
+  useEffect(() => {
+    fetchAssets();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTenantId, supabase]);
 
   // Clear selection whenever the underlying transaction set changes (e.g. client switch).
@@ -424,6 +457,16 @@ export default function DashboardClient({ tenants, categories }: Props) {
         >
           Processed Files
         </button>
+        <button
+          onClick={() => setView("assets")}
+          className={`px-3 py-2 text-sm font-medium ${
+            view === "assets"
+              ? "border-b-2 border-zinc-900 text-zinc-900"
+              : "text-zinc-500 hover:text-zinc-700"
+          }`}
+        >
+          Assets
+        </button>
       </div>
 
       {view === "pnl" && (
@@ -431,6 +474,9 @@ export default function DashboardClient({ tenants, categories }: Props) {
           transactions={transactions}
           categories={categoryList}
           tenantName={selectedTenantName}
+          depreciation={assetsDepreciation.filter((d) =>
+            assets.some((a) => a.id === d.asset_id)
+          )}
         />
       )}
 
@@ -445,6 +491,16 @@ export default function DashboardClient({ tenants, categories }: Props) {
             tenantName={selectedTenantName}
           />
         ))}
+
+      {view === "assets" && selectedTenantId && (
+        <AssetsView
+          tenantId={selectedTenantId}
+          tenantName={selectedTenantName}
+          assets={assets}
+          depreciation={assetsDepreciation}
+          onRefresh={fetchAssets}
+        />
+      )}
 
       {view === "transactions" && selectedIds.size > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border border-zinc-300 bg-zinc-100 px-3 py-2">
@@ -537,6 +593,7 @@ export default function DashboardClient({ tenants, categories }: Props) {
               <th className="px-3 py-2 text-right">Amount</th>
               <th className="px-3 py-2">Category</th>
               <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2">Asset</th>
             </tr>
             <tr className="border-t border-zinc-100">
               <th className="px-3 py-1.5"></th>
@@ -689,19 +746,20 @@ export default function DashboardClient({ tenants, categories }: Props) {
                   <option value="categorized">Categorized</option>
                 </select>
               </th>
+              <th className="px-3 py-1.5"></th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={9} className="px-3 py-6 text-center text-zinc-400">
+                <td colSpan={10} className="px-3 py-6 text-center text-zinc-400">
                   Loading…
                 </td>
               </tr>
             )}
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-6 text-center text-zinc-400">
+                <td colSpan={10} className="px-3 py-6 text-center text-zinc-400">
                   {selectedTenantId
                     ? "No transactions match the current filters."
                     : "Select a client to view transactions."}
@@ -802,6 +860,32 @@ export default function DashboardClient({ tenants, categories }: Props) {
                     >
                       {t.status === "categorized" ? "Categorized" : "Pending review"}
                     </button>
+                  </td>
+                  <td className="px-3 py-2">
+                    {(t.category_id === CAT_ASSET_PURCHASE || t.category_id === CAT_ASSET_SALE) && (
+                      <select
+                        value={t.asset_id ?? ""}
+                        onChange={(e) => {
+                          const assetId = e.target.value ? Number(e.target.value) : null;
+                          setTransactions((prev) =>
+                            prev.map((tx) =>
+                              tx.id === t.id ? { ...tx, asset_id: assetId } : tx
+                            )
+                          );
+                          startTransition(() =>
+                            linkTransactionToAsset(t.id, assetId, t.type)
+                          );
+                        }}
+                        className="min-w-[140px] rounded border border-zinc-200 px-2 py-1 text-xs"
+                      >
+                        <option value="">No asset</option>
+                        {assets.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                 </tr>
               );
