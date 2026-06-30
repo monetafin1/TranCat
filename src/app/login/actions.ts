@@ -49,8 +49,8 @@ export async function signUp(
     });
   }
 
-  // No email confirmation step configured by default — session is created immediately.
-  redirect("/dashboard");
+  // Redirect to pending-approval — an admin must approve before dashboard access is granted.
+  redirect("/pending-approval");
 }
 
 export async function signOut() {
