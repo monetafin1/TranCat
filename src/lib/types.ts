@@ -30,3 +30,14 @@ export type Transaction = {
   created_at: string;
   updated_at: string;
 };
+
+export type ProcessedFile = {
+  id: number;
+  tenant_id: number;
+  filename: string;
+  file_hash: string;
+  bank: string | null;
+  account_type: AccountType | null;
+  transaction_count: number;
+  processed_at: string;
+};
