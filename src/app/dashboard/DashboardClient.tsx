@@ -10,8 +10,9 @@ import {
   bulkSetStatus,
   createCategory,
 } from "./actions";
-import type { Category, Tenant, Transaction } from "@/lib/types";
+import type { Category, ProcessedFile, Tenant, Transaction } from "@/lib/types";
 import PnLView from "./PnLView";
+import ProcessedFilesView from "./ProcessedFilesView";
 
 type Props = {
   tenants: Tenant[];
@@ -53,6 +54,8 @@ export default function DashboardClient({ tenants, categories }: Props) {
   );
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
+  const [processedFiles, setProcessedFiles] = useState<ProcessedFile[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
   const [filters, setFilters] = useState<Filters>(emptyFilters);
   const [newTenantName, setNewTenantName] = useState("");
   const [, startTransition] = useTransition();
@@ -66,7 +69,9 @@ export default function DashboardClient({ tenants, categories }: Props) {
   >("expense");
   const [addingCategory, setAddingCategory] = useState(false);
 
-  const [view, setView] = useState<"transactions" | "pnl">("transactions");
+  const [view, setView] = useState<"transactions" | "pnl" | "files">(
+    "transactions"
+  );
 
   useEffect(() => {
     if (!selectedTenantId) {
@@ -83,6 +88,23 @@ export default function DashboardClient({ tenants, categories }: Props) {
       .then(({ data, error }) => {
         if (!error) setTransactions((data ?? []) as Transaction[]);
         setLoading(false);
+      });
+  }, [selectedTenantId, supabase]);
+
+  useEffect(() => {
+    if (!selectedTenantId) {
+      setProcessedFiles([]);
+      return;
+    }
+    setFilesLoading(true);
+    supabase
+      .from("processed_files")
+      .select("*")
+      .eq("tenant_id", selectedTenantId)
+      .order("processed_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (!error) setProcessedFiles((data ?? []) as ProcessedFile[]);
+        setFilesLoading(false);
       });
   }, [selectedTenantId, supabase]);
 
@@ -392,6 +414,16 @@ export default function DashboardClient({ tenants, categories }: Props) {
         >
           P&amp;L
         </button>
+        <button
+          onClick={() => setView("files")}
+          className={`px-3 py-2 text-sm font-medium ${
+            view === "files"
+              ? "border-b-2 border-zinc-900 text-zinc-900"
+              : "text-zinc-500 hover:text-zinc-700"
+          }`}
+        >
+          Processed Files
+        </button>
       </div>
 
       {view === "pnl" && (
@@ -401,6 +433,18 @@ export default function DashboardClient({ tenants, categories }: Props) {
           tenantName={selectedTenantName}
         />
       )}
+
+      {view === "files" &&
+        (filesLoading ? (
+          <div className="rounded-lg border border-zinc-200 bg-white px-4 py-6 text-center text-zinc-400">
+            Loading…
+          </div>
+        ) : (
+          <ProcessedFilesView
+            files={processedFiles}
+            tenantName={selectedTenantName}
+          />
+        ))}
 
       {view === "transactions" && selectedIds.size > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border border-zinc-300 bg-zinc-100 px-3 py-2">
